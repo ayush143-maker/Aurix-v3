@@ -1,0 +1,653 @@
+import { Platform } from 'react-native';
+import TrackPlayer, {
+  Event,
+  PlaybackState,
+  PlayerCommand,
+  RepeatMode,
+} from '@rntp/player';
+import { appError, toAppError } from '../core/errors';
+import { ResolvedStream, Track } from '../core/types';
+import { progressClock } from './progressClock';
+
+export type PlaybackStatus = {
+  isPlaying: boolean;
+  isBuffering: boolean;
+  isLoaded: boolean;
+  /** Seconds. */
+  position: number;
+  /** Seconds; 0 until the source reports one. */
+  duration: number;
+  volume: number;
+};
+
+export const IDLE_STATUS: PlaybackStatus = {
+  isPlaying: false,
+  isBuffering: false,
+  isLoaded: false,
+  position: 0,
+  duration: 0,
+  volume: 1,
+};
+
+type EngineEvents = {
+  onStatus: (status: PlaybackStatus) => void;
+  /** The current track played through to its end. */
+  onComplete: () => void;
+  /** Playback failed for the loaded track. */
+  onError: (error: unknown) => void;
+  /**
+   * The OS-level skip-next / skip-previous control was pressed (lock
+   * screen, notification, Bluetooth/AVRCP, Android Auto). Configured below
+   * (see setCommands) with handling: 'hybrid' and Next/Previous specifically
+   * routed to JS. IMPORTANT, corrected after real-device testing: this does
+   * NOT reliably mean "RNTP will wait for the app to decide what happens
+   * next." Once queueNext() has put a real second item in RNTP's own
+   * queue, RNTP can and does advance to it on its own — audio and
+   * notification metadata update correctly immediately, but nothing tells
+   * the app's JS state that happened unless something is listening for it.
+   * That "something" is onActiveTrackChanged below, not this callback —
+   * this one still exists for the case where nothing is queued yet and the
+   * app must resolve a track from scratch.
+   */
+  onRemoteNext: () => void;
+  onRemotePrevious: () => void;
+  /**
+   * RNTP's own active queue item changed to a genuinely different track,
+   * for ANY reason: it auto-continued into a track queueNext() had already
+   * placed after the current one, a remote button press it decided to
+   * handle itself, or anything else outside the app's own load() call.
+   * This is the real fix for the "notification shows the new song, but the
+   * app's title/artist stay on the old one" bug — the app must treat RNTP's
+   * own queue as ground truth for *which track is actually playing*, not
+   * assume it only changes when the app itself calls load().
+   */
+  onActiveTrackChanged: (mediaId: string, info: { endedNaturally: boolean }) => void;
+};
+
+/**
+ * Wraps react-native-track-player v5 (@rntp/player) behind the SAME small
+ * imperative interface PlaybackEngine has always exposed to the rest of the
+ * app — usePlayer.tsx does not need to change ITS PUBLIC API for this
+ * migration, but it DOES need to listen for onActiveTrackChanged now (see
+ * that event's doc) instead of assuming only load() ever changes what's
+ * playing. queueNext() puts a real second item in RNTP's queue so the
+ * lock-screen Next button works and shows correctly — but a real queue
+ * means RNTP can genuinely move through it on its own, and the app has to
+ * follow along rather than assume it is always the one deciding.
+ */
+export class PlaybackEngine {
+  private listeners: Partial<EngineEvents> = {};
+
+  private status: PlaybackStatus = { ...IDLE_STATUS };
+  private currentTrackId: string | null = null;
+  private desiredVolume = 1;
+  /**
+   * Repeat-one is handed to the native player, so the SAME item loops without
+   * JS in the loop. Anything else (off / all) is decided by the JS queue.
+   * Kept as a flag so it can be re-applied after every load().
+   */
+  private repeatOne = false;
+
+  private loadTimer: ReturnType<typeof setTimeout> | null = null;
+  private loadToken = 0;
+  private completionFired = false;
+
+  private configured = false;
+
+  /** Safety net only: reads the native position if progress events ever stop arriving. */
+  private watchdogTimer: ReturnType<typeof setInterval> | null = null;
+  private primeTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastProgressAt = 0;
+  private eventSubs: { remove: () => void }[] = [];
+
+  on<K extends keyof EngineEvents>(event: K, handler: EngineEvents[K]): void {
+    this.listeners[event] = handler;
+  }
+
+  getStatus(): PlaybackStatus {
+    return this.status;
+  }
+
+  /**
+   * Current position in seconds, from the local clock (never a native call).
+   * Accurate to a few hundredths of a second while playing.
+   */
+  getPosition(): number {
+    return progressClock.now();
+  }
+
+  /** Set up the player once. Safe to call repeatedly. Fully synchronous. */
+  configure(): void {
+    if (this.configured) return;
+
+    TrackPlayer.setupPlayer({
+      contentType: 'music',
+      handleAudioBecomingNoisy: true,
+      // The native player pushes its position to JS once a second, as an
+      // event. Reading it the other way round (getProgress) is a BLOCKING
+      // call that makes the JS thread wait for Android's UI thread -- when
+      // that thread is busy, the seek bar and lyrics froze and then jumped.
+      progressSync: { intervalSeconds: 1 },
+    });
+
+    // handling: 'hybrid' keeps Play/Pause/Seek on RNTP's reliable native
+    // path (works with Android Auto, Bluetooth, etc. with zero JS), while
+    // routing Next/Previous to our own onRemoteNext/onRemotePrevious —
+    // required because our queue is still external to RNTP (see class doc).
+    TrackPlayer.setCommands({
+      capabilities: [
+        PlayerCommand.PlayPause,
+        PlayerCommand.Next,
+        PlayerCommand.Previous,
+        PlayerCommand.Seek,
+      ],
+      handling: 'hybrid',
+      perCommandHandling: {
+        [PlayerCommand.Next]: 'js',
+        [PlayerCommand.Previous]: 'js',
+      },
+    });
+
+    this.attachEventListeners();
+    this.startProgressWatchdog();
+    this.configured = true;
+    this.applyRepeatMode();
+  }
+
+  /**
+   * Repeat-one loops the current item natively. Without this, RNTP moves on
+   * into the item queueNext() pre-queued as soon as the track ends, while the
+   * JS queue (which still says "repeat one") believes nothing changed -- the
+   * audio advances but the title/artwork stay on the old song.
+   */
+  setRepeatOne(on: boolean): void {
+    this.repeatOne = on;
+    this.applyRepeatMode();
+  }
+
+  private applyRepeatMode(): void {
+    if (!this.configured) return;
+    try {
+      TrackPlayer.setRepeatMode(this.repeatOne ? RepeatMode.One : RepeatMode.Off);
+    } catch {
+      /* best effort: the JS guard in usePlayer still keeps repeat-one correct */
+    }
+  }
+
+  private attachEventListeners(): void {
+    this.eventSubs.push(
+      TrackPlayer.addEventListener(Event.PlaybackStateChanged, ({ state }) => {
+        this.handlePlaybackStateChanged(state);
+      })
+    );
+
+    this.eventSubs.push(
+      TrackPlayer.addEventListener(Event.IsPlayingChanged, ({ playing }) => {
+        this.status = { ...this.status, isPlaying: playing };
+        // Give the native progress events a moment before the watchdog worries.
+        this.lastProgressAt = Date.now();
+        progressClock.setPlaying(playing);
+        this.listeners.onStatus?.(this.status);
+      })
+    );
+
+    // Position, pushed from native once a second while audio plays (plus one
+    // final tick when it pauses). The local clock fills in the time between.
+    this.eventSubs.push(
+      TrackPlayer.addEventListener(Event.PlaybackProgressUpdated, (e) => {
+        if (e.mediaId !== this.currentTrackId) return; // a previous track's last tick
+        this.lastProgressAt = Date.now();
+        this.applyReading(e.position, e.duration, { ageMs: Date.now() - e.timestamp });
+      })
+    );
+
+    this.eventSubs.push(
+      TrackPlayer.addEventListener(Event.PlaybackError, ({ message }) => {
+        this.clearLoadTimer();
+        this.listeners.onError?.(appError('playback_failed', message));
+      })
+    );
+
+    this.eventSubs.push(
+      TrackPlayer.addEventListener(Event.RemoteNext, () => {
+        this.listeners.onRemoteNext?.();
+      })
+    );
+
+    this.eventSubs.push(
+      TrackPlayer.addEventListener(Event.RemotePrevious, () => {
+        this.listeners.onRemotePrevious?.();
+      })
+    );
+
+    // PATCH: this is the real fix for "notification shows the new song but
+    // the app still shows the old one." MediaItemTransition fires whenever
+    // RNTP's actual active item changes, for ANY reason — including on its
+    // own, once queueNext() has put a real track after the current one.
+    // load() already sets currentTrackId BEFORE calling setMediaItems(), so
+    // a transition caused by our OWN load() reports a mediaId that already
+    // matches — no double-handling. Only a transition RNTP made on its own
+    // reports something different, which is exactly the case the app needs
+    // to be told about.
+    this.eventSubs.push(
+      TrackPlayer.addEventListener(Event.MediaItemTransition, ({ item }) => {
+        if (item?.mediaId && item.mediaId !== this.currentTrackId) {
+          // Work out whether the previous track ran to its end BEFORE the clock
+          // is reset for the new one (repeat-one's safety net needs this).
+          const total = this.status.duration;
+          const endedNaturally = total > 0 && progressClock.now() >= total - 1.5;
+          this.currentTrackId = item.mediaId;
+          this.completionFired = false;
+          // A new item is now playing from 0: don't show the previous
+          // track's position/duration while the first real reading arrives.
+          this.status = { ...this.status, position: 0, duration: 0 };
+          progressClock.reset(0, 0, this.status.isPlaying);
+          this.primeProgress();
+          this.listeners.onStatus?.(this.status);
+          this.listeners.onActiveTrackChanged?.(item.mediaId, { endedNaturally });
+          return;
+        }
+
+        // Same item again (our own load(), or the native repeat-one loop
+        // starting over): take one real reading so the clock restarts exactly.
+        if (item?.mediaId) {
+          this.completionFired = false;
+          this.primeProgress();
+          return;
+        }
+
+        if (!item && !this.completionFired) {
+          // The queue genuinely has nothing left after whatever just ended.
+          this.completionFired = true;
+          this.listeners.onComplete?.();
+        }
+      })
+    );
+  }
+
+  /**
+   * Take a position reading (from a native event or a one-off read), move the
+   * local clock, and keep `status` in step. Runs about once a second.
+   */
+  private applyReading(
+    positionRaw: number,
+    durationRaw: number,
+    opts: { force?: boolean; ageMs?: number } = {}
+  ): void {
+    if (!Number.isFinite(positionRaw)) return; // garbage reading: keep what we have
+    const duration = Number.isFinite(durationRaw) && durationRaw > 0 ? durationRaw : 0;
+    const position = Math.max(0, positionRaw);
+
+    if (duration > 0 && this.loadTimer) this.clearLoadTimer();
+
+    progressClock.sync(position, duration, this.status.isPlaying, opts);
+
+    const keepDuration = duration > 0 ? duration : this.status.duration;
+    if (position !== this.status.position || keepDuration !== this.status.duration) {
+      this.status = { ...this.status, position, duration: keepDuration };
+      this.listeners.onStatus?.(this.status);
+    }
+  }
+
+  /**
+   * One real read of the native position. BLOCKING (it waits for Android's UI
+   * thread), so it is only used in rare moments -- a new track, or as the
+   * watchdog below -- never on a steady timer.
+   */
+  private readNow(force: boolean): void {
+    try {
+      const progress = TrackPlayer.getProgress();
+      this.applyReading(progress.position, progress.duration, { force });
+    } catch {
+      /* transient — the queue may be momentarily empty */
+    }
+  }
+
+  /**
+   * Right after a track starts, the first progress event is up to a second
+   * away and the duration is unknown. A few quick reads fill that gap, and
+   * stop as soon as the duration is known.
+   */
+  private primeProgress(): void {
+    if (this.primeTimer) clearTimeout(this.primeTimer);
+    const token = this.loadToken;
+    const delays = [150, 350, 700, 1200, 2000];
+    const step = (i: number) => {
+      this.primeTimer = setTimeout(() => {
+        this.primeTimer = null;
+        if (token !== this.loadToken || !this.currentTrackId) return;
+        this.readNow(i === 0);
+        if (this.status.duration <= 0 && i + 1 < delays.length) step(i + 1);
+      }, delays[i] - (i > 0 ? delays[i - 1] : 0));
+    };
+    step(0);
+  }
+
+  /**
+   * Safety net. Progress events normally arrive every second; if they stop
+   * (an unexpected player state) the clock would only coast. So if playing and
+   * nothing has been heard for a while, read the position once to re-sync.
+   */
+  private startProgressWatchdog(): void {
+    if (this.watchdogTimer) return;
+    this.watchdogTimer = setInterval(() => {
+      if (!this.status.isPlaying || !this.currentTrackId) return;
+      if (Date.now() - this.lastProgressAt < 3000) return;
+      this.lastProgressAt = Date.now();
+      this.readNow(false);
+    }, 1500);
+  }
+
+  private handlePlaybackStateChanged(state: PlaybackState): void {
+    // PATCH: Ended fires every time ANY track finishes — including one that
+    // correctly continues into a queueNext()'d track a moment later. Firing
+    // onComplete here unconditionally (as an earlier version of this file
+    // did) would wrongly treat a normal, correct continuation as "nothing
+    // left to play." The real completion signal is now
+    // MediaItemTransition reporting item === null (see attachEventListeners)
+    // — this is kept only as a defensive fallback, in case some real-device
+    // scenario ends without ever firing that transition, guarded by the
+    // same completionFired flag so the two can never double-fire.
+    if (state === PlaybackState.Ended && !this.completionFired) {
+      try {
+        const activeIndex = TrackPlayer.getActiveMediaItemIndex();
+        const queueLength = TrackPlayer.getQueue().length;
+        const nothingAfterThis = activeIndex === null || activeIndex >= queueLength - 1;
+        if (nothingAfterThis) {
+          this.completionFired = true;
+          this.listeners.onComplete?.();
+        }
+      } catch {
+        /* if this can't be checked, MediaItemTransition remains the source of truth */
+      }
+    }
+
+    // PlaybackState here is Idle | Ready | Buffering | Ended | Error —
+    // "is it playing" is tracked separately via IsPlayingChanged above.
+    const isBuffering = state === PlaybackState.Buffering;
+    const isLoaded = state === PlaybackState.Ready || state === PlaybackState.Buffering;
+
+    this.status = {
+      ...this.status,
+      isBuffering,
+      isLoaded,
+      volume: this.desiredVolume,
+    };
+    this.listeners.onStatus?.(this.status);
+  }
+
+  private clearLoadTimer(): void {
+    if (this.loadTimer) {
+      clearTimeout(this.loadTimer);
+      this.loadTimer = null;
+    }
+  }
+
+  private toMediaItem(track: Track, stream: ResolvedStream) {
+    // headers live nested under `url`, not as a sibling field — confirmed
+    // against the real MediaItem type, not the library's own docs (which
+    // didn't show this at all).
+    return {
+      mediaId: track.id,
+      url: { uri: stream.url, headers: stream.headers },
+      title: track.title,
+      artist: track.artist.name,
+      albumTitle: track.album,
+      artworkUrl: track.albumImageUrl || undefined,
+    };
+  }
+
+  /**
+   * Put a real, resolved track into RNTP's queue right after whatever is
+   * currently playing — WITHOUT touching current playback.
+   *
+   * This is the fix for the lock-screen Next button being disabled and
+   * Previous just restarting the current track: RNTP renders those controls
+   * based on whether a real "next" item genuinely exists in its own native
+   * queue, not on which PlayerCommand capabilities were declared. Since
+   * load() only ever puts ONE item in that queue, RNTP correctly reported
+   * "no next" — this appends the second, real one.
+   *
+   * The *decision* of what track comes next — TasteService recording,
+   * related-track extension when the queue is nearly empty, etc. — still
+   * lives in usePlayer.tsx exactly as before; this method only ever queues
+   * the SAME track that decision already picked (queueRef.peekNext()).
+   * IMPORTANT, corrected after real-device testing: once this real item
+   * exists, pressing Next (or a natural end-of-track) may be handled by
+   * RNTP itself rather than always calling the app's onRemoteNext — see
+   * onActiveTrackChanged, which is how the app now finds out either way.
+   */
+  queueNext(track: Track, stream: ResolvedStream): void {
+    if (!this.configured) return;
+
+    try {
+      const activeIndex = TrackPlayer.getActiveMediaItemIndex();
+      if (activeIndex === null) return; // nothing is currently loaded
+
+      // Only ever attach a "next" item to the track the app believes is
+      // playing. If the native active item is something else (a load or an
+      // auto-advance is in flight), the index maths below would put the item
+      // in the wrong place -- skip and let the next sync handle it.
+      if (TrackPlayer.getActiveMediaItem()?.mediaId !== this.currentTrackId) return;
+
+      const queue = TrackPlayer.getQueue();
+      const nextIndex = activeIndex + 1;
+      const item = this.toMediaItem(track, stream);
+
+      // Exactly ONE item may follow the current one: drop anything beyond it.
+      if (queue.length > nextIndex + 1) {
+        TrackPlayer.removeMediaItems(nextIndex + 1, queue.length);
+      }
+
+      if (nextIndex < queue.length) {
+        // Something is already queued there — only touch it if it is not
+        // already the same track, to avoid an unnecessary reload/flicker.
+        if (queue[nextIndex]?.mediaId !== track.id) {
+          TrackPlayer.replaceMediaItem(nextIndex, item);
+        }
+      } else {
+        TrackPlayer.insertMediaItem(nextIndex, item);
+      }
+    } catch {
+      // Best-effort: worst case the Next button stays as it was: still
+      // functional via onRemoteNext, just possibly shown disabled.
+    }
+  }
+
+  /** Id of the item queued right after the current one, if any. */
+  getQueuedNextId(): string | null {
+    if (!this.configured) return null;
+    try {
+      const activeIndex = TrackPlayer.getActiveMediaItemIndex();
+      if (activeIndex === null) return null;
+      return TrackPlayer.getQueue()[activeIndex + 1]?.mediaId ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Remove whatever is queued after the current item.
+   *
+   * Called the moment the JS queue changes (shuffle, reshuffle, reorder,
+   * remove, ...) so the native player can never auto-advance into a track the
+   * app no longer intends to play next. If the track ends before the new next
+   * item is resolved and queued, RNTP reports "nothing left" and the normal
+   * onComplete path picks the correct track from the JS queue.
+   */
+  clearQueuedNext(): void {
+    if (!this.configured) return;
+    try {
+      const activeIndex = TrackPlayer.getActiveMediaItemIndex();
+      if (activeIndex === null) return;
+      const length = TrackPlayer.getQueue().length;
+      if (length > activeIndex + 1) TrackPlayer.removeMediaItems(activeIndex + 1, length);
+    } catch {
+      /* best effort */
+    }
+  }
+
+  /** Load a resolved stream and begin playing it. */
+  async load(
+    track: Track,
+    stream: ResolvedStream,
+    options: { autoPlay?: boolean; startPosition?: number } = {}
+  ): Promise<void> {
+    const { autoPlay = true, startPosition = 0 } = options;
+    const token = ++this.loadToken;
+
+    try {
+      this.configure();
+
+      this.currentTrackId = track.id;
+      this.completionFired = false;
+
+      this.status = { ...IDLE_STATUS, isBuffering: true, volume: this.desiredVolume };
+      progressClock.reset(startPosition, 0, false);
+      this.lastProgressAt = Date.now();
+      this.listeners.onStatus?.(this.status);
+
+      // setMediaItems() replaces the whole queue with this one track. This
+      // also implicitly clears any track queueNext() had appended for the
+      // PREVIOUS current track — starting a fresh load() always means a
+      // fresh, correct queue, never a stale leftover "next" item.
+      TrackPlayer.setMediaItems([this.toMediaItem(track, stream)]);
+      TrackPlayer.setVolume(this.desiredVolume);
+      this.applyRepeatMode();
+
+      // If the source never loads, surface a real error instead of hanging.
+      this.clearLoadTimer();
+      this.loadTimer = setTimeout(() => {
+        if (token !== this.loadToken) return;
+        if (this.status.isLoaded) return;
+        this.listeners.onError?.(appError('playback_failed', 'Stream did not start'));
+      }, 20_000);
+
+      if (startPosition > 0) {
+        try {
+          TrackPlayer.seekTo(startPosition);
+        } catch {
+          // Seeking before the source is ready is not fatal.
+        }
+      }
+
+      if (autoPlay) {
+        TrackPlayer.play();
+      }
+      this.primeProgress();
+    } catch (e) {
+      this.clearLoadTimer();
+      throw toAppError(e, 'playback_failed');
+    }
+  }
+
+  play(): void {
+    try {
+      TrackPlayer.play();
+    } catch (e) {
+      this.listeners.onError?.(toAppError(e, 'playback_failed'));
+    }
+  }
+
+  pause(): void {
+    try {
+      TrackPlayer.pause();
+    } catch {
+      /* pausing a released player is harmless */
+    }
+  }
+
+  async seekTo(seconds: number): Promise<void> {
+    if (!Number.isFinite(seconds)) return;
+
+    const duration = this.status.duration;
+    const target = Math.max(0, duration > 0 ? Math.min(seconds, duration) : seconds);
+
+    try {
+      this.completionFired = false;
+      TrackPlayer.seekTo(target);
+
+      // Re-anchor the clock right away: the bar and lyrics jump to the new
+      // spot immediately instead of waiting for the next native event.
+      progressClock.sync(target, duration, this.status.isPlaying, { force: true });
+      this.status = { ...this.status, position: target };
+      this.listeners.onStatus?.(this.status);
+    } catch (e) {
+      this.listeners.onError?.(toAppError(e, 'playback_failed'));
+    }
+  }
+
+  setVolume(volume: number): void {
+    this.desiredVolume = Math.max(0, Math.min(1, volume));
+    if (this.configured) {
+      try {
+        TrackPlayer.setVolume(this.desiredVolume);
+      } catch {
+        /* best effort */
+      }
+    }
+
+    this.status = { ...this.status, volume: this.desiredVolume };
+    this.listeners.onStatus?.(this.status);
+  }
+
+  getVolume(): number {
+    return this.desiredVolume;
+  }
+
+  /** Stop and unload, returning the engine to idle. */
+  stop(): void {
+    this.clearLoadTimer();
+    this.loadToken++;
+    this.currentTrackId = null;
+    this.completionFired = false;
+
+    try {
+      TrackPlayer.stop();
+    } catch {
+      /* already torn down */
+    }
+
+    if (this.primeTimer) {
+      clearTimeout(this.primeTimer);
+      this.primeTimer = null;
+    }
+    progressClock.reset();
+    this.status = { ...IDLE_STATUS, volume: this.desiredVolume };
+    this.listeners.onStatus?.(this.status);
+  }
+
+  get trackId(): string | null {
+    return this.currentTrackId;
+  }
+
+  async release(): Promise<void> {
+    if (Platform.OS === 'web') return;
+
+    this.clearLoadTimer();
+
+    if (this.watchdogTimer) {
+      clearInterval(this.watchdogTimer);
+      this.watchdogTimer = null;
+    }
+    if (this.primeTimer) {
+      clearTimeout(this.primeTimer);
+      this.primeTimer = null;
+    }
+
+    for (const sub of this.eventSubs) {
+      sub.remove();
+    }
+    this.eventSubs = [];
+
+    this.configured = false;
+
+    try {
+      TrackPlayer.stop();
+    } catch {
+      /* best effort */
+    }
+  }
+}
+
+export const playbackEngine = new PlaybackEngine();
