@@ -1,6 +1,6 @@
 # Aurix-v3
 
-Aurix-v3 is an Expo and React Native codebase for an Android and iOS music-listening app. It includes navigation, player and library state, native integrations, and supporting assets, with dependencies including React Navigation, React Native Track Player, local storage, and Expo notifications. The README does not establish a connected music catalogue or streaming service.
+Aurix-v3 is an Expo and React Native codebase for an Android and iOS music-listening app. Its root entry files are `App.tsx` and `index.ts`; application navigation and provider structure are under `src/`. The project includes player and library state, native integrations, and supporting assets, with dependencies including React Navigation, React Native Track Player, local storage, and Expo notifications. The README does not establish a connected music catalogue or streaming service.
 
 ## Getting started
 
