@@ -27,9 +27,21 @@ For visible app content and presentation, inspect the relevant screens and compo
 
 For app-level identity or platform-specific settings, review the existing configuration in `app.json`, `eas.json`, and the platform files before changing them. Do not assume these files are interchangeable or edit service configuration without checking its purpose.
 
+## Deployment-readiness checklist
+
+These are platform-specific actions to complete before and after publishing; they are not evidence that a build or deployment exists or that any checks have passed.
+
+- [ ] Decide which target you are preparing: web, Android, or iOS. The repository includes Expo platform scripts, but this README does not establish a particular release target or deployment process.
+- [ ] Identify the target's actual build procedure and output location from the project configuration and applicable project documentation before selecting files to publish. The repository root is the source tree; no specific web output directory or build artifact is verified here. Do not publish the TypeScript source root as though it were automatically the finished web output.
+- [ ] For a web target, check that the chosen output contains its generated entry page and that local assets resolve from their referenced relative paths. For Android or iOS, check asset references in the app and confirm the chosen build includes the required assets. Preserve paths when moving files, or update affected references and verify them in the target build.
+- [ ] No `.env.example` is listed in the repository root, and this README does not define environment-variable names. Do not invent environment settings. Inspect the purpose of existing configuration, including `app.json`, `eas.json`, `google-services.json`, and `supabase/`, before changing or sharing it; their presence does not establish a configured service or a deployment. Keep private credentials out of client builds and tracked files.
+- [ ] Before publishing, review the selected target in its relevant development environment. For web changes, use the web target; for native changes, review on the relevant Android or iOS environment. Web preview does not verify native behavior.
+- [ ] After publishing or distributing a build, open or install that published version and review the actual target. Check that it starts, that screens and controls under review work as observed, and that required assets load. For web, inspect the browser Console and Network panel; for native, use diagnostics in the relevant development environment.
+- [ ] Repeat the review at relevant device or viewport sizes. Do not infer that a catalogue or streaming service is connected from the player interface.
+
 ## Contributor handoff
 
-Keep each change focused on the relevant screen, component, asset, or configuration. Preserve existing filenames and relative references unless a move or rename is needed; if paths change, update the corresponding references. Summarize what changed and identify the affected files in the handoff. Manually review the relevant target before publishing. The checklists below are review actions, not verified results.
+Keep each change focused on the relevant screen, component, asset, or configuration. Preserve existing filenames and relative references unless a move or rename is needed; if paths change, update the corresponding references. Summarize what changed and identify the affected files in the handoff. Manually review the relevant target before publishing. The checklists in this README are review actions, not verified results.
 
 ## Troubleshooting
 
