@@ -91,3 +91,14 @@ No review results are recorded here; complete the checks in the relevant develop
 - `package.json` — package manifest, dependency list, and declared scripts.
 - `scripts` — project scripts directory.
 - `src` — source-code directory.
+
+## Package scripts
+
+The following scripts are declared in the repository's `package.json`. Their presence documents the configured commands; it does not mean they have been executed or passed.
+
+| Script | Command | Purpose |
+|---|---|---|
+| `start` | `npm run start` | Starts the Expo development server. |
+| `android` | `npm run android` | Runs the Expo Android target. |
+| `ios` | `npm run ios` | Runs the Expo iOS target. |
+| `web` | `npm run web` | Starts the Expo web target. |
