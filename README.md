@@ -27,6 +27,12 @@ For visible app content and presentation, inspect the relevant screens and compo
 
 For app-level identity or platform-specific settings, review the existing configuration in `app.json`, `eas.json`, and the platform files before changing them. Do not assume these files are interchangeable or edit service configuration without checking its purpose.
 
+## Configuration and data handling
+
+The root file list includes `google-services.json` and a `supabase/` directory, but this README does not verify their contents or describe a configured service. Inspect their purpose and contents locally before changing, sharing, or deploying them; do not copy their values into documentation or examples. Treat tracked configuration as public. A configuration file shipped with a mobile or web client cannot protect values from users of that client. In particular, never bundle private keys, passwords, or privileged service credentials in the app. If a credential is found in a tracked file, remove or replace it and rotate it where applicable; deleting a value from the latest revision alone may not remove it from repository history.
+
+No `.env.example` is listed in the repository root, and this README does not define environment-variable names or backend configuration. Do not assume or invent them. If you add a template, include placeholders only, explain its purpose, and keep real local credentials out of tracked files. Treat local app data as data on the user's device; do not place real sensitive information in test content or logs.
+
 ## Browser, platform, and asset review checklist
 
 These are review actions, not verified results or performance measurements. No compatibility testing is recorded here.
@@ -37,6 +43,7 @@ These are review actions, not verified results or performance measurements. No c
 - [ ] Check that assets in `assets/` are still referenced before removing them. Search their uses in source and configuration first.
 - [ ] Compare a narrow phone-sized layout with a wider tablet or desktop-sized layout where supported. Check that content and controls remain readable and usable; also check the relevant native device layouts for native changes.
 - [ ] Try the player or library controls present on the screens under review. Do not assume a music catalogue or streaming service is connected.
+- [ ] Review configuration changes for accidental credentials or sensitive user data before committing. Check what values are bundled into client builds and treat them as visible to app users.
 
 ## Accessibility review checklist
 
