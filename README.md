@@ -27,6 +27,14 @@ For visible app content and presentation, inspect the relevant screens and compo
 
 For app-level identity or platform-specific settings, review the existing configuration in `app.json`, `eas.json`, and the platform files before changing them. Do not assume these files are interchangeable or edit service configuration without checking its purpose.
 
+## Troubleshooting
+
+These are diagnostic steps, not reports of known problems.
+
+1. Start with the Expo app entry (`index.ts` and `App.tsx`) and the navigation or screen files under `src/`; this repository does not list a root `index.html` as the app entry. Use the platform target relevant to the issue.
+2. Check local image, audio, video, and font references against files under `assets/` and their paths in source or configuration. Preserve relative paths when moving assets, or update every affected reference.
+3. For web issues, inspect the browser Console and Network panel; for native-only issues, use diagnostics in the relevant Android or iOS development environment. Check failed request URLs to distinguish a missing local asset from a remote resource that depends on network access.
+
 ## Configuration and data handling
 
 The root file list includes `google-services.json` and a `supabase/` directory, but this README does not verify their contents or describe a configured service. Inspect their purpose and contents locally before changing, sharing, or deploying them; do not copy their values into documentation or examples. Treat tracked configuration as public. A configuration file shipped with a mobile or web client cannot protect values from users of that client. In particular, never bundle private keys, passwords, or privileged service credentials in the app. If a credential is found in a tracked file, remove or replace it and rotate it where applicable; deleting a value from the latest revision alone may not remove it from repository history.
@@ -38,9 +46,6 @@ No `.env.example` is listed in the repository root, and this README does not def
 These are review actions, not verified results or performance measurements. No compatibility testing is recorded here.
 
 - [ ] Start the project with `npm start`. For web changes, review the web experience in current browsers relevant to the intended audience. For native changes, review on the affected Android or iOS development environment; browser testing does not verify native behavior.
-- [ ] In browser developer tools, inspect the Console and Network panel for errors, failed requests, and unexpected warnings. Check native logs or diagnostics in the relevant development environment when investigating native-only behavior.
-- [ ] Inspect image, audio, video, and font references in `src/`, `assets/`, and relevant configuration. Confirm local paths match files in the project, including any platform-specific references. Verify remote resource URLs and consider what happens if a remote resource is unavailable.
-- [ ] Check that assets in `assets/` are still referenced before removing them. Search their uses in source and configuration first.
 - [ ] Compare a narrow phone-sized layout with a wider tablet or desktop-sized layout where supported. Check that content and controls remain readable and usable; also check the relevant native device layouts for native changes.
 - [ ] Try the player or library controls present on the screens under review. Do not assume a music catalogue or streaming service is connected.
 - [ ] Review configuration changes for accidental credentials or sensitive user data before committing. Check what values are bundled into client builds and treat them as visible to app users.
