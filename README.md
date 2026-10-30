@@ -27,6 +27,16 @@ For visible app content and presentation, inspect the relevant screens and compo
 
 For app-level identity or platform-specific settings, review the existing configuration in `app.json`, `eas.json`, and the platform files before changing them. Do not assume these files are interchangeable or edit service configuration without checking its purpose.
 
+## Asset and loading review checklist
+
+These are review actions, not verified results or performance measurements:
+
+- [ ] Inspect image, audio, video, and font references in the relevant files under `src/` and `assets/`. Confirm local files exist at the paths used by the app, including any platform-specific references.
+- [ ] Check that assets in `assets/` are still referenced and needed before removing them; search for uses across the app and configuration first.
+- [ ] Review unusually large images, audio, or other media in relation to their intended display or playback. Consider a more suitable size or encoding where appropriate, and recheck quality and playback.
+- [ ] Review external font, script, and other remote resource references in the app and configuration. Confirm each is intentional and necessary, and consider what the interface does if it is unavailable.
+- [ ] Review loading and playback on the relevant Android or iOS development environment after asset changes; web review alone does not cover native behavior.
+
 ## Manual review checklist
 
 These are actions to perform, not verified results:
