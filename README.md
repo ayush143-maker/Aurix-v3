@@ -1,15 +1,22 @@
 # Aurix-v3
 
-An Expo and React Native mobile-app codebase with navigation, player and library providers, notification initialization, and React Native Track Player integration. The repository includes Android-related configuration.
+Aurix-v3 is an Expo and React Native codebase for an Android and iOS music-listening app. The project is organised around a mobile app entry point, navigation, player and library state, native integrations, and supporting assets. Its dependencies include React Navigation, React Native Track Player, local storage, and Expo notifications.
 
-## Run locally
+## Getting started
 
-Install dependencies with npm install and start Expo with npm start. Use npm run android for Android, npm run ios for iOS, or npm run web for the web target. Native targets require the relevant development toolchain.
+Install the dependencies and start the Expo development server:
 
-## App organization
+    npm install
+    npm start
 
-The project uses an Expo/React Native structure. The entry component initializes shared app services and providers; navigation, screens, hooks, and service modules should remain organized in the source tree.
+The package also provides platform commands:
 
-## Device testing
+    npm run android
+    npm run ios
+    npm run web
 
-After starting Expo, test the target platform on a physical device for playback, permission prompts, file access, and background behavior. Native modules may need a development build and platform tooling; a web preview cannot validate every mobile feature.
+Android and iOS runs require the relevant native development tools and a compatible device or simulator. The web command is useful for checking the web target, but it is not a substitute for testing native playback.
+
+## Working in the codebase
+
+Start with App.tsx and index.ts, then follow the navigation and provider structure under src/. Keep playback, library, and notification behaviour within their existing boundaries. Native-player changes should be tested on a real device as well as in the development environment.
