@@ -75,3 +75,10 @@ These are future checks on relevant screens and platforms, not compliance claims
 - [ ] For meaningful images, check text alternatives; identify decorative imagery accordingly. If motion is present, check reduced-motion behavior on each relevant platform.
 
 No review results are recorded here; complete the checks in the relevant development environment after making changes.
+
+## Final release review
+
+- Review the app entry file and package configuration together before creating a release.
+- Check the scripts and dependency versions in `package.json`; use the repository's declared workflow rather than assuming a generic build command.
+- Check that the required files in `assets` are included in the published copy.
+- Review the published result once on a narrow screen and once on a wider screen; treat this as a release check, not an automated test report.
