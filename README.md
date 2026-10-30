@@ -36,4 +36,15 @@ These are actions to perform, not verified results:
 - [ ] Try the interactions described by the screens you are reviewing, including player or library controls where present. Do not assume a music catalogue or streaming service is connected.
 - [ ] Inspect the layout on a narrow phone-sized viewport and a wider viewport or device, and check that visible content and controls remain usable.
 
-No review results are recorded here; complete the checklist in the relevant development environment after making changes.
+## Accessibility review checklist
+
+These are future checks to perform on the relevant screens and platforms, not compliance claims or verified results:
+
+- [ ] Use a hardware keyboard where supported to reach interactive controls, including player and library controls present on the screens under review. Check that keyboard order is sensible and controls can be operated without touch.
+- [ ] Confirm keyboard focus is visibly indicated on interactive controls and remains distinguishable against each screen's background.
+- [ ] Check that buttons, navigation items, player controls, and other interactive elements have meaningful accessible names; do not rely only on icons or visual context.
+- [ ] Review text, icons, and control-state contrast against their backgrounds on the Android and iOS screens being reviewed.
+- [ ] For album art or other meaningful images, check that an appropriate text alternative is available; identify decorative imagery so it is not announced as meaningful content.
+- [ ] If transitions, animated artwork, or other motion are present, check how the app behaves with reduced-motion preferences enabled on each platform.
+
+No review results are recorded here; complete the checklists in the relevant development environment after making changes.
