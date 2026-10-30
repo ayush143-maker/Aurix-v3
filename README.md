@@ -21,6 +21,8 @@ npm run web
 
 Android and iOS runs require the relevant native development tools and a compatible device or simulator. The web command targets the web build; it does not replace reviewing native playback.
 
-## Review changes
+## Personalize and review
 
-Start with `App.tsx` and `index.ts`, then follow the navigation and provider structure under `src/`. Keep playback, library, and notification behavior within their existing boundaries. After a change, use `npm start` and review it in the relevant development environment; use the Android or iOS command for native-specific changes.
+For visible app content and presentation, inspect the relevant screens and components under `src/` and the supporting files in `assets/` before editing; the root listing does not identify individual screen or asset filenames. Keep existing asset references intact when moving or renaming files, and update every corresponding reference if a move is necessary.
+
+For app-level identity or platform-specific settings, review the existing configuration in `app.json`, `eas.json`, and the platform files before changing them. Do not assume these files are interchangeable or edit service configuration without checking its purpose. After a change, use `npm start` and review it in the relevant development environment; use the Android or iOS command for native-specific changes.
