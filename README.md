@@ -23,38 +23,27 @@ Android and iOS runs require the relevant native development tools and a compati
 
 ## Personalize
 
-For visible app content and presentation, inspect the relevant screens and components under `src/` and the supporting files in `assets/` before editing; the root listing does not identify individual screen or asset filenames. Keep existing asset references intact when moving or renaming files, and update every corresponding reference if a move is necessary.
+For visible app content and presentation, inspect the relevant screens and components under `src/` and supporting files in `assets/` before editing; the root listing does not identify individual screen or asset filenames. Keep existing asset references intact when moving or renaming files, and update every corresponding reference if a move is necessary.
 
 For app-level identity or platform-specific settings, review the existing configuration in `app.json`, `eas.json`, and the platform files before changing them. Do not assume these files are interchangeable or edit service configuration without checking its purpose.
 
-## Asset and loading review checklist
+## Browser, platform, and asset review checklist
 
-These are review actions, not verified results or performance measurements:
+These are review actions, not verified results or performance measurements. No compatibility testing is recorded here.
 
-- [ ] Inspect image, audio, video, and font references in the relevant files under `src/` and `assets/`. Confirm local files exist at the paths used by the app, including any platform-specific references.
-- [ ] Check that assets in `assets/` are still referenced and needed before removing them; search for uses across the app and configuration first.
-- [ ] Review unusually large images, audio, or other media in relation to their intended display or playback. Consider a more suitable size or encoding where appropriate, and recheck quality and playback.
-- [ ] Review external font, script, and other remote resource references in the app and configuration. Confirm each is intentional and necessary, and consider what the interface does if it is unavailable.
-- [ ] Review loading and playback on the relevant Android or iOS development environment after asset changes; web review alone does not cover native behavior.
-
-## Manual review checklist
-
-These are actions to perform, not verified results:
-
-- [ ] Start the app with `npm start` and open it in the relevant development environment. For native-specific changes, review on the corresponding Android or iOS development environment; web review is not a substitute for native review.
-- [ ] Check the screens you changed and inspect referenced files under `assets/` for missing images or other media. If a path has changed, confirm its references match the new location.
-- [ ] Try the interactions described by the screens you are reviewing, including player or library controls where present. Do not assume a music catalogue or streaming service is connected.
-- [ ] Inspect the layout on a narrow phone-sized viewport and a wider viewport or device, and check that visible content and controls remain usable.
+- [ ] Start the project with `npm start`. For web changes, review the web experience in current browsers relevant to the intended audience. For native changes, review on the affected Android or iOS development environment; browser testing does not verify native behavior.
+- [ ] In browser developer tools, inspect the Console and Network panel for errors, failed requests, and unexpected warnings. Check native logs or diagnostics in the relevant development environment when investigating native-only behavior.
+- [ ] Inspect image, audio, video, and font references in `src/`, `assets/`, and relevant configuration. Confirm local paths match files in the project, including any platform-specific references. Verify remote resource URLs and consider what happens if a remote resource is unavailable.
+- [ ] Check that assets in `assets/` are still referenced before removing them. Search their uses in source and configuration first.
+- [ ] Compare a narrow phone-sized layout with a wider tablet or desktop-sized layout where supported. Check that content and controls remain readable and usable; also check the relevant native device layouts for native changes.
+- [ ] Try the player or library controls present on the screens under review. Do not assume a music catalogue or streaming service is connected.
 
 ## Accessibility review checklist
 
-These are future checks to perform on the relevant screens and platforms, not compliance claims or verified results:
+These are future checks on relevant screens and platforms, not compliance claims or verified results:
 
-- [ ] Use a hardware keyboard where supported to reach interactive controls, including player and library controls present on the screens under review. Check that keyboard order is sensible and controls can be operated without touch.
-- [ ] Confirm keyboard focus is visibly indicated on interactive controls and remains distinguishable against each screen's background.
-- [ ] Check that buttons, navigation items, player controls, and other interactive elements have meaningful accessible names; do not rely only on icons or visual context.
-- [ ] Review text, icons, and control-state contrast against their backgrounds on the Android and iOS screens being reviewed.
-- [ ] For album art or other meaningful images, check that an appropriate text alternative is available; identify decorative imagery so it is not announced as meaningful content.
-- [ ] If transitions, animated artwork, or other motion are present, check how the app behaves with reduced-motion preferences enabled on each platform.
+- [ ] Use a hardware keyboard where supported to reach interactive controls and check keyboard order and operation.
+- [ ] Check visible focus, meaningful accessible names, and text and control contrast on the screens under review.
+- [ ] For meaningful images, check text alternatives; identify decorative imagery accordingly. If motion is present, check reduced-motion behavior on each relevant platform.
 
-No review results are recorded here; complete the checklists in the relevant development environment after making changes.
+No review results are recorded here; complete the checks in the relevant development environment after making changes.
