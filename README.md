@@ -27,6 +27,10 @@ For visible app content and presentation, inspect the relevant screens and compo
 
 For app-level identity or platform-specific settings, review the existing configuration in `app.json`, `eas.json`, and the platform files before changing them. Do not assume these files are interchangeable or edit service configuration without checking its purpose.
 
+## Contributor handoff
+
+Keep each change focused on the relevant screen, component, asset, or configuration. Preserve existing filenames and relative references unless a move or rename is needed; if paths change, update the corresponding references. Summarize what changed and identify the affected files in the handoff. Manually review the relevant target before publishing. The checklists below are review actions, not verified results.
+
 ## Troubleshooting
 
 These are diagnostic steps, not reports of known problems.
