@@ -15,8 +15,8 @@ Platform commands are also available:
     npm run ios
     npm run web
 
-Android and iOS runs require the relevant native development tools and a compatible device or simulator. The web command targets the web build; it does not replace reviewing native playback.
+Android and iOS runs require the relevant native development tools and a compatible device or simulator. The web command targets the web build; it does not replace reviewing native playback. The repository includes `app.json` and `eas.json`, but this README does not document a production build or deployment procedure.
 
 ## Working and reviewing changes
 
-Start with `App.tsx` and `index.ts`, then follow the navigation and provider structure under `src/`. Keep playback, library, and notification behaviour within their existing boundaries. After a change, use `npm start` and review it in the relevant development environment; use the Android or iOS command when reviewing native-specific changes.
+Start with `App.tsx` and `index.ts`, then follow the navigation and provider structure under `src/`. Keep playback, library, and notification behaviour within their existing boundaries. After a change, use `npm start` and review it in the relevant development environment; use the Android or iOS command when reviewing native-specific changes. If a platform command fails, check that its required native development tools and a compatible device or simulator are available.
