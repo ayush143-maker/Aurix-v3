@@ -82,3 +82,12 @@ No review results are recorded here; complete the checks in the relevant develop
 - Check the scripts and dependency versions in `package.json`; use the repository's declared workflow rather than assuming a generic build command.
 - Check that the required files in `assets` are included in the published copy.
 - Review the published result once on a narrow screen and once on a wider screen; treat this as a release check, not an automated test report.
+
+## Repository map
+
+- `App.tsx` — top-level application component file.
+- `assets` — project assets directory.
+- `docs` — project documentation directory.
+- `package.json` — package manifest, dependency list, and declared scripts.
+- `scripts` — project scripts directory.
+- `src` — source-code directory.
